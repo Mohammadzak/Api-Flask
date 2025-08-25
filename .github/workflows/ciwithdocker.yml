@@ -1,0 +1,51 @@
+name: CI with Docker Jakir
+
+on:
+  workflow_dispatch  # Manual trigger, can add push trigger if needed
+
+env:
+  DOCKER_IMAGE: mohammadzak/apiflask
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Build Docker image
+      - name: Build Docker image
+        run: |
+          docker build -t $DOCKER_IMAGE:${{ github.sha }} .
+          docker tag $DOCKER_IMAGE:${{ github.sha }} $DOCKER_IMAGE:latest
+      # 3. Login to Docker Hub
+      - name: Docker Login
+        run: echo "${{ secrets.DOCKERHUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+      # 4. Push Docker image to Docker Hub
+      - name: Push Docker Image
+        run: |
+          docker push $DOCKER_IMAGE:${{ github.sha }}
+          docker push $DOCKER_IMAGE:latest
+      # 5. Optional: Run Docker locally to test
+      - name: Run container locally
+        run: |
+          docker run -d --name flask-python -p 5000:5000 $DOCKER_IMAGE:latest
+      # 6. Setup kubectl
+      - name: Setup Kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: latest
+
+      # 7. Setup Minikube
+      - name: Setup Minikube
+        run: |
+          minikube start --driver=docker
+          kubectl config use-context minikube
+      # 8. Deploy to Kubernetes
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl apply -f k8s/deployment.yml
+          kubectl apply -f k8s/service.yml
